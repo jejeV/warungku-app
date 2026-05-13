@@ -1,0 +1,144 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Reset & base ─────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+* { -webkit-tap-highlight-color: transparent; }
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  background: #FAFAF8;
+  color: #1c1917;
+}
+
+/* ── Scrollbar ─────────────────────────────────── */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* ── App layout — mobile first ─────────────────── */
+/*
+  Mobile  : single column, content scrolls freely, bottom nav fixed
+  Desktop : left sidebar 72px + content area, max-width centered
+*/
+
+.app-root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #FAFAF8;
+  /* subtle warm dot-grid texture */
+  background-image: radial-gradient(circle, #e7e5e0 1px, transparent 1px);
+  background-size: 24px 24px;
+  position: relative;
+}
+
+.app-content {
+  flex: 1;
+  padding-bottom: 72px; /* room for bottom nav */
+  max-width: 480px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* ── Bottom nav — mobile ───────────────────────── */
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 64px;
+  background: rgba(255,255,255,0.92);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-top: 1px solid rgba(231,229,228,0.8);
+  display: flex;
+  align-items: stretch;
+  z-index: 100;
+  /* center on wide screens */
+  max-width: 480px;
+  margin: 0 auto;
+  right: auto;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  border-radius: 20px 20px 0 0;
+  box-shadow: 0 -4px 24px rgba(0,0,0,0.06);
+}
+
+.nav-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  text-decoration: none;
+  color: #a8a29e;
+  transition: color 0.2s;
+  position: relative;
+}
+
+.nav-item--active { color: #E97400; }
+
+.nav-icon-wrap {
+  padding: 5px 14px;
+  border-radius: 12px;
+  transition: background 0.2s, transform 0.15s;
+}
+.nav-icon-wrap--active {
+  background: #FFF5EB;
+  transform: translateY(-2px);
+}
+
+.nav-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+/* ── Card / surface tokens ─────────────────────── */
+.card {
+  background: #ffffff;
+  border-radius: 20px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.04);
+}
+
+/* ── Animations ────────────────────────────────── */
+@keyframes slideUp {
+  from { transform: translateY(16px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+.slide-up { animation: slideUp 0.3s cubic-bezier(.22,.68,0,1.2) forwards; }
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.fade-in { animation: fadeIn 0.25s ease forwards; }
+
+/* ── Wide-screen ambient glow ──────────────────── */
+@media (min-width: 640px) {
+  .app-root::before {
+    content: '';
+    position: fixed;
+    top: -120px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 600px;
+    height: 600px;
+    background: radial-gradient(ellipse, rgba(233,116,0,0.10) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+  }
+  .app-content {
+    position: relative;
+    z-index: 1;
+  }
+}
