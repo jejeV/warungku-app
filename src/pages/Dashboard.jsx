@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useStore } from '../context/StoreContext'
-import { supabase } from '../lib/supabase' 
+import { supabase } from '../lib/supabase'
 import { TrendingUp, AlertTriangle, ShoppingBag } from 'lucide-react'
 import { AreaChart, Area, XAxis, Tooltip, ResponsiveContainer } from 'recharts'
 
@@ -8,14 +8,32 @@ function fmt(n) {
   return 'Rp ' + Number(n || 0).toLocaleString('id-ID')
 }
 
+// Bandingkan tanggal pakai komponen lokal (year/month/date) — fix timezone UTC vs WIB
+function isSameLocalDay(isoString, targetDate) {
+  const d = new Date(isoString)
+  return (
+    d.getFullYear() === targetDate.getFullYear() &&
+    d.getMonth()    === targetDate.getMonth() &&
+    d.getDate()     === targetDate.getDate()
+  )
+}
+
+// Buat Date object N hari lalu, reset ke midnight lokal
+function daysAgo(n) {
+  const d = new Date()
+  d.setDate(d.getDate() - n)
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+
 export default function Dashboard() {
   const { store } = useStore()
 
-  const [transaksi, setTransaksi]           = useState([])
-  const [products, setProducts]             = useState([])
-  const [stokRendah, setStokRendah]         = useState([])
-  const [pendapatanHariIni, setPendapatan]  = useState(0)
-  const [loading, setLoading]               = useState(true)
+  const [transaksi, setTransaksi]          = useState([])
+  const [products, setProducts]            = useState([])
+  const [stokRendah, setStokRendah]        = useState([])
+  const [pendapatanHariIni, setPendapatan] = useState(0)
+  const [loading, setLoading]              = useState(true)
 
   useEffect(() => {
     if (!store?.id) return
@@ -25,15 +43,15 @@ export default function Dashboard() {
   async function fetchAll() {
     setLoading(true)
 
-    // Ambil 7 hari ke belakang untuk chart + transaksi terakhir
-    const cutoff7 = new Date(Date.now() - 86400000 * 7).toISOString()
+    // cutoff = 6 hari lalu jam 00:00 lokal → ISO untuk query Supabase
+    const cutoff = daysAgo(6)
 
-    const [{ data: txData }, { data: prodData }] = await Promise.all([
+    const [{ data: txData, error: txErr }, { data: prodData, error: prodErr }] = await Promise.all([
       supabase
         .from('transaksi')
         .select('*')
         .eq('store_id', store.id)
-        .gte('created_at', cutoff7)
+        .gte('created_at', cutoff.toISOString())
         .order('created_at', { ascending: false }),
 
       supabase
@@ -42,38 +60,37 @@ export default function Dashboard() {
         .eq('store_id', store.id),
     ])
 
+    if (txErr)   console.error('transaksi error:', txErr)
+    if (prodErr) console.error('products error:', prodErr)
+
     const tx   = txData   || []
     const prod = prodData || []
+    const today = new Date()
 
-    // Pendapatan hari ini
-    const todayStr = new Date().toDateString()
     const hariIni = tx
-      .filter(t => new Date(t.created_at).toDateString() === todayStr)
+      .filter(t => isSameLocalDay(t.created_at, today))
       .reduce((s, t) => s + (t.total || 0), 0)
-
-    // Stok rendah = stok <= min_stok
-    const rendah = prod.filter(p => p.stok <= p.min_stok)
 
     setTransaksi(tx)
     setProducts(prod)
     setPendapatan(hariIni)
-    setStokRendah(rendah)
+    setStokRendah(prod.filter(p => p.stok <= p.min_stok))
     setLoading(false)
   }
 
-  // Chart 7 hari — pakai created_at
+  const today = new Date()
+
   const last7 = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date()
-    d.setDate(d.getDate() - (6 - i))
+    const d = daysAgo(6 - i)
     const label = d.toLocaleDateString('id-ID', { weekday: 'short' })
     const total = transaksi
-      .filter(t => new Date(t.created_at).toDateString() === d.toDateString())
+      .filter(t => isSameLocalDay(t.created_at, d))
       .reduce((s, t) => s + (t.total || 0), 0)
     return { label, total }
   })
 
   const totalTransaksiHariIni = transaksi.filter(t =>
-    new Date(t.created_at).toDateString() === new Date().toDateString()
+    isSameLocalDay(t.created_at, today)
   ).length
 
   return (
