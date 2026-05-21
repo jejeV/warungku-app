@@ -1,14 +1,9 @@
-import { useState, useEffect } from 'react'
 import { useStore } from '../context/StoreContext'
-import { supabase } from '../lib/supabase'
-import { TrendingUp, AlertTriangle, ShoppingBag } from 'lucide-react'
+import { TrendingUp, AlertTriangle, ShoppingBag, RefreshCw } from 'lucide-react'
 import { AreaChart, Area, XAxis, Tooltip, ResponsiveContainer } from 'recharts'
 
-function fmt(n) {
-  return 'Rp ' + Number(n || 0).toLocaleString('id-ID')
-}
+function fmt(n) { return 'Rp ' + Number(n || 0).toLocaleString('id-ID') }
 
-// Bandingkan tanggal pakai komponen lokal (year/month/date) — fix timezone UTC vs WIB
 function isSameLocalDay(isoString, targetDate) {
   const d = new Date(isoString)
   return (
@@ -18,7 +13,6 @@ function isSameLocalDay(isoString, targetDate) {
   )
 }
 
-// Buat Date object N hari lalu, reset ke midnight lokal
 function daysAgo(n) {
   const d = new Date()
   d.setDate(d.getDate() - n)
@@ -27,59 +21,12 @@ function daysAgo(n) {
 }
 
 export default function Dashboard() {
-  const { store } = useStore()
-
-  const [transaksi, setTransaksi]          = useState([])
-  const [products, setProducts]            = useState([])
-  const [stokRendah, setStokRendah]        = useState([])
-  const [pendapatanHariIni, setPendapatan] = useState(0)
-  const [loading, setLoading]              = useState(true)
-
-  useEffect(() => {
-    if (!store?.id) return
-    fetchAll()
-  }, [store?.id])
-
-  async function fetchAll() {
-    setLoading(true)
-
-    // cutoff = 6 hari lalu jam 00:00 lokal → ISO untuk query Supabase
-    const cutoff = daysAgo(6)
-
-    const [{ data: txData, error: txErr }, { data: prodData, error: prodErr }] = await Promise.all([
-      supabase
-        .from('transaksi')
-        .select('*')
-        .eq('store_id', store.id)
-        .gte('created_at', cutoff.toISOString())
-        .order('created_at', { ascending: false }),
-
-      supabase
-        .from('products')
-        .select('*')
-        .eq('store_id', store.id),
-    ])
-
-    if (txErr)   console.error('transaksi error:', txErr)
-    if (prodErr) console.error('products error:', prodErr)
-
-    const tx   = txData   || []
-    const prod = prodData || []
-    const today = new Date()
-
-    const hariIni = tx
-      .filter(t => isSameLocalDay(t.created_at, today))
-      .reduce((s, t) => s + (t.total || 0), 0)
-
-    setTransaksi(tx)
-    setProducts(prod)
-    setPendapatan(hariIni)
-    setStokRendah(prod.filter(p => p.stok <= p.min_stok))
-    setLoading(false)
-  }
+  // Ambil semua dari StoreContext — sudah realtime & timezone-safe
+  const { store, products, transaksi, loading, stokRendah, pendapatanHariIni, reload } = useStore()
 
   const today = new Date()
 
+  // Chart 7 hari — timezone-safe
   const last7 = Array.from({ length: 7 }, (_, i) => {
     const d = daysAgo(6 - i)
     const label = d.toLocaleDateString('id-ID', { weekday: 'short' })
@@ -93,17 +40,27 @@ export default function Dashboard() {
     isSameLocalDay(t.created_at, today)
   ).length
 
+  if (loading) return (
+    <div className="flex items-center justify-center h-full">
+      <div className="w-8 h-8 border-4 border-brand-500 border-t-transparent rounded-full animate-spin" />
+    </div>
+  )
+
   return (
     <div className="px-5 pb-4 slide-up">
       {/* Header */}
-      <div className="pt-6 pb-4">
-        <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest">Selamat datang</p>
-        <h1 className="text-2xl font-extrabold text-stone-800 mt-0.5">
-          {store?.nama || 'WarungKu'} 🏪
-        </h1>
-        <p className="text-xs text-stone-400 mt-0.5">
-          {new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-        </p>
+      <div className="pt-6 pb-4 flex items-center justify-between">
+        <div>
+          <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest">Selamat datang</p>
+          <h1 className="text-2xl font-extrabold text-stone-800 mt-0.5">{store?.nama || 'WarungKu'} 🏪</h1>
+          <p className="text-xs text-stone-400 mt-0.5">
+            {new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+          </p>
+        </div>
+        {/* Manual refresh */}
+        <button onClick={reload} className="p-2.5 rounded-2xl bg-white shadow-sm text-stone-400 active:scale-90 transition-all">
+          <RefreshCw size={15} />
+        </button>
       </div>
 
       {/* Pendapatan hari ini */}
@@ -113,7 +70,7 @@ export default function Dashboard() {
         <div className="absolute -bottom-8 -right-2 w-24 h-24 rounded-full bg-white/5" />
         <p className="text-orange-100 text-xs font-semibold uppercase tracking-wider">Pendapatan Hari Ini</p>
         <p className="text-white text-3xl font-extrabold mt-1 font-mono tracking-tight">
-          {loading ? '...' : fmt(pendapatanHariIni)}
+          {fmt(pendapatanHariIni)}
         </p>
         <div className="flex gap-4 mt-3">
           <div>
@@ -199,7 +156,7 @@ export default function Dashboard() {
               </div>
             )
           })}
-          {!loading && transaksi.length === 0 && (
+          {transaksi.length === 0 && (
             <p className="text-xs text-stone-400 text-center py-4">Belum ada transaksi hari ini</p>
           )}
         </div>
