@@ -14,7 +14,7 @@ export default function Kasir() {
   const [error, setError]   = useState(null)
 
   const addToCart = (p) => {
-    if (p.stok <= 0) return
+    if (p.stok <= 0) retur
     setCart(prev => {
       const existing = prev.find(c => c.productId === p.id)
       if (existing) {
