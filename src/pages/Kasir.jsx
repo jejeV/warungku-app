@@ -1,15 +1,17 @@
 import { useState } from 'react'
 import { useStore } from '../context/StoreContext'
-import { ShoppingCart, Plus, Minus, Trash2, Check, X } from 'lucide-react'
+import { ShoppingCart, Plus, Minus, Check, AlertCircle, Loader2 } from 'lucide-react'
 
 function fmt(n) { return 'Rp ' + Number(n).toLocaleString('id-ID') }
 
 export default function Kasir() {
   const { products, addTransaksi } = useStore()
-  const [cart, setCart] = useState([])
-  const [bayar, setBayar] = useState('')
+  const [cart, setCart]     = useState([])
+  const [bayar, setBayar]   = useState('')
   const [sukses, setSukses] = useState(null)
   const [search, setSearch] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError]   = useState(null)
 
   const addToCart = (p) => {
     if (p.stok <= 0) return
@@ -30,21 +32,39 @@ export default function Kasir() {
     )
   }
 
-  const total = cart.reduce((s, c) => s + c.harga * c.qty, 0)
+  const total     = cart.reduce((s, c) => s + c.harga * c.qty, 0)
   const kembalian = +bayar - total
-
   const bayarAngka = [5000, 10000, 20000, 50000, 100000]
 
-  const proses = () => {
-    if (cart.length === 0 || +bayar < total) return
-    const t = addTransaksi({ items: cart, total, bayar: +bayar, kembalian })
-    setSukses({ ...t, kembalian })
+  const proses = async () => {
+    if (cart.length === 0 || +bayar < total || loading) return
+    setLoading(true)
+    setError(null)
+
+    const { data, error: err } = await addTransaksi({
+      items: cart,
+      total,
+      bayar: +bayar,
+      kembalian,
+    })
+
+    setLoading(false)
+
+    if (err) {
+      setError('Transaksi gagal disimpan. Periksa koneksi dan coba lagi.')
+      return
+    }
+
+    setSukses({ ...data, kembalian })
     setCart([])
     setBayar('')
   }
 
-  const filtered = products.filter(p => p.name.toLowerCase().includes(search.toLowerCase()))
+  const filtered = products.filter(p =>
+    p.name.toLowerCase().includes(search.toLowerCase())
+  )
 
+  // ── Sukses screen ─────────────────────────────────────────────────────────
   if (sukses) return (
     <div className="h-full flex flex-col items-center justify-center px-6 slide-up">
       <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mb-4">
@@ -57,10 +77,7 @@ export default function Kasir() {
         <p className="text-4xl font-extrabold text-brand-500 font-mono">{fmt(sukses.kembalian)}</p>
         <p className="text-xs text-stone-400 mt-3">Total: {fmt(sukses.total)} · Bayar: {fmt(sukses.bayar)}</p>
       </div>
-      <button
-        className="w-full py-3 bg-brand-500 text-white rounded-2xl font-bold"
-        onClick={() => setSukses(null)}
-      >
+      <button className="w-full py-3 bg-brand-500 text-white rounded-2xl font-bold" onClick={() => setSukses(null)}>
         Transaksi Baru
       </button>
     </div>
@@ -73,7 +90,7 @@ export default function Kasir() {
         <h1 className="text-xl font-extrabold text-stone-800">Kasir</h1>
       </div>
 
-      {/* Search produk */}
+      {/* Search */}
       <input
         className="w-full bg-white rounded-2xl py-2.5 px-4 text-sm outline-none border border-stone-100 shadow-sm mb-3"
         placeholder="Cari produk..."
@@ -85,14 +102,10 @@ export default function Kasir() {
         {filtered.map(p => {
           const inCart = cart.find(c => c.productId === p.id)
           return (
-            <button
-              key={p.id}
-              onClick={() => addToCart(p)}
-              disabled={p.stok === 0}
+            <button key={p.id} onClick={() => addToCart(p)} disabled={p.stok === 0}
               className={`bg-white rounded-2xl p-3 text-left shadow-sm border-2 transition-all
                 ${inCart ? 'border-brand-400' : 'border-transparent'}
-                ${p.stok === 0 ? 'opacity-40' : 'active:scale-95'}`}
-            >
+                ${p.stok === 0 ? 'opacity-40' : 'active:scale-95'}`}>
               <p className="text-xs font-bold text-stone-800 leading-tight">{p.name}</p>
               <p className="text-[10px] text-stone-400 mt-0.5">{p.category}</p>
               <div className="flex justify-between items-end mt-2">
@@ -163,12 +176,26 @@ export default function Kasir() {
               {kembalian < 0 ? `Kurang ${fmt(Math.abs(kembalian))}` : `Kembalian ${fmt(kembalian)}`}
             </div>
           )}
+
+          {/* Error state */}
+          {error && (
+            <div className="flex items-center gap-2 bg-red-50 border border-red-100 rounded-2xl px-3 py-2.5 mb-3">
+              <AlertCircle size={13} className="text-red-500 shrink-0" />
+              <p className="text-xs text-red-600 font-medium">{error}</p>
+            </div>
+          )}
+
           <button
-            className={`w-full py-3 rounded-2xl font-bold text-sm transition-all
-              ${+bayar >= total && cart.length > 0 ? 'bg-brand-500 text-white shadow-md shadow-brand-200' : 'bg-stone-100 text-stone-400'}`}
+            className={`w-full py-3 rounded-2xl font-bold text-sm transition-all flex items-center justify-center gap-2
+              ${+bayar >= total && cart.length > 0 && !loading
+                ? 'bg-brand-500 text-white shadow-md shadow-brand-200'
+                : 'bg-stone-100 text-stone-400'}`}
             onClick={proses}
+            disabled={loading}
           >
-            Proses Pembayaran
+            {loading
+              ? <><Loader2 size={15} className="animate-spin" /> Menyimpan...</>
+              : 'Proses Pembayaran'}
           </button>
         </div>
       )}
