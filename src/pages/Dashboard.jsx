@@ -1,26 +1,79 @@
+import { useState, useEffect } from 'react'
 import { useStore } from '../context/StoreContext'
-import { TrendingUp, AlertTriangle, Package, ShoppingBag } from 'lucide-react'
+import { supabase } from '../lib/supabase' 
+import { TrendingUp, AlertTriangle, ShoppingBag } from 'lucide-react'
 import { AreaChart, Area, XAxis, Tooltip, ResponsiveContainer } from 'recharts'
 
 function fmt(n) {
-  return 'Rp ' + n.toLocaleString('id-ID')
+  return 'Rp ' + Number(n || 0).toLocaleString('id-ID')
 }
 
 export default function Dashboard() {
-  const { products, transaksi, pendapatanHariIni, stokRendah } = useStore()
+  const { store } = useStore()
 
+  const [transaksi, setTransaksi]           = useState([])
+  const [products, setProducts]             = useState([])
+  const [stokRendah, setStokRendah]         = useState([])
+  const [pendapatanHariIni, setPendapatan]  = useState(0)
+  const [loading, setLoading]               = useState(true)
+
+  useEffect(() => {
+    if (!store?.id) return
+    fetchAll()
+  }, [store?.id])
+
+  async function fetchAll() {
+    setLoading(true)
+
+    // Ambil 7 hari ke belakang untuk chart + transaksi terakhir
+    const cutoff7 = new Date(Date.now() - 86400000 * 7).toISOString()
+
+    const [{ data: txData }, { data: prodData }] = await Promise.all([
+      supabase
+        .from('transaksi')
+        .select('*')
+        .eq('store_id', store.id)
+        .gte('created_at', cutoff7)
+        .order('created_at', { ascending: false }),
+
+      supabase
+        .from('products')
+        .select('*')
+        .eq('store_id', store.id),
+    ])
+
+    const tx   = txData   || []
+    const prod = prodData || []
+
+    // Pendapatan hari ini
+    const todayStr = new Date().toDateString()
+    const hariIni = tx
+      .filter(t => new Date(t.created_at).toDateString() === todayStr)
+      .reduce((s, t) => s + (t.total || 0), 0)
+
+    // Stok rendah = stok <= min_stok
+    const rendah = prod.filter(p => p.stok <= p.min_stok)
+
+    setTransaksi(tx)
+    setProducts(prod)
+    setPendapatan(hariIni)
+    setStokRendah(rendah)
+    setLoading(false)
+  }
+
+  // Chart 7 hari — pakai created_at
   const last7 = Array.from({ length: 7 }, (_, i) => {
     const d = new Date()
     d.setDate(d.getDate() - (6 - i))
     const label = d.toLocaleDateString('id-ID', { weekday: 'short' })
     const total = transaksi
-      .filter(t => new Date(t.tanggal).toDateString() === d.toDateString())
-      .reduce((s, t) => s + t.total, 0)
+      .filter(t => new Date(t.created_at).toDateString() === d.toDateString())
+      .reduce((s, t) => s + (t.total || 0), 0)
     return { label, total }
   })
 
   const totalTransaksiHariIni = transaksi.filter(t =>
-    new Date(t.tanggal).toDateString() === new Date().toDateString()
+    new Date(t.created_at).toDateString() === new Date().toDateString()
   ).length
 
   return (
@@ -28,7 +81,9 @@ export default function Dashboard() {
       {/* Header */}
       <div className="pt-6 pb-4">
         <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest">Selamat datang</p>
-        <h1 className="text-2xl font-extrabold text-stone-800 mt-0.5">WarungKu 🏪</h1>
+        <h1 className="text-2xl font-extrabold text-stone-800 mt-0.5">
+          {store?.nama || 'WarungKu'} 🏪
+        </h1>
         <p className="text-xs text-stone-400 mt-0.5">
           {new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
         </p>
@@ -41,7 +96,7 @@ export default function Dashboard() {
         <div className="absolute -bottom-8 -right-2 w-24 h-24 rounded-full bg-white/5" />
         <p className="text-orange-100 text-xs font-semibold uppercase tracking-wider">Pendapatan Hari Ini</p>
         <p className="text-white text-3xl font-extrabold mt-1 font-mono tracking-tight">
-          {fmt(pendapatanHariIni)}
+          {loading ? '...' : fmt(pendapatanHariIni)}
         </p>
         <div className="flex gap-4 mt-3">
           <div>
@@ -69,7 +124,7 @@ export default function Dashboard() {
           <AreaChart data={last7} margin={{ top: 4, right: 4, left: 4, bottom: 0 }}>
             <defs>
               <linearGradient id="grad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#E97400" stopOpacity={0.25} />
+                <stop offset="5%"  stopColor="#E97400" stopOpacity={0.25} />
                 <stop offset="95%" stopColor="#E97400" stopOpacity={0} />
               </linearGradient>
             </defs>
@@ -110,19 +165,26 @@ export default function Dashboard() {
           <ShoppingBag size={15} className="text-stone-400" />
         </div>
         <div className="flex flex-col gap-2">
-          {transaksi.slice(0, 4).map(t => (
-            <div key={t.id} className="flex justify-between items-center py-1.5 border-b border-stone-50 last:border-0">
-              <div>
-                <p className="text-xs font-semibold text-stone-700">
-                  {t.items.map(i => i.nama).join(', ').slice(0, 28)}{t.items.length > 1 ? '...' : ''}
-                </p>
-                <p className="text-[10px] text-stone-400 mt-0.5">
-                  {new Date(t.tanggal).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
-                </p>
+          {transaksi.slice(0, 4).map(t => {
+            const items = Array.isArray(t.items) ? t.items : []
+            const namaItems = items.map(i => i.nama || i.name || '').join(', ')
+            return (
+              <div key={t.id} className="flex justify-between items-center py-1.5 border-b border-stone-50 last:border-0">
+                <div>
+                  <p className="text-xs font-semibold text-stone-700">
+                    {namaItems.slice(0, 28)}{namaItems.length > 28 ? '...' : ''}
+                  </p>
+                  <p className="text-[10px] text-stone-400 mt-0.5">
+                    {new Date(t.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                  </p>
+                </div>
+                <p className="text-xs font-bold text-brand-500 font-mono">{fmt(t.total)}</p>
               </div>
-              <p className="text-xs font-bold text-brand-500 font-mono">{fmt(t.total)}</p>
-            </div>
-          ))}
+            )
+          })}
+          {!loading && transaksi.length === 0 && (
+            <p className="text-xs text-stone-400 text-center py-4">Belum ada transaksi hari ini</p>
+          )}
         </div>
       </div>
     </div>
